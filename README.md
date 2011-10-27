@@ -1,8 +1,9 @@
-gocpio
-======
+gocpio v1.0.1
+=============
 
 A simple library similar to Go’s `tar` or `zip` package for accessing cpio archives.
-**Right now only the writer is implemented.**
+It’s not pretty and only implements the new ASCII format. Maybe I’ll refactor and implement
+other formats some day.
 
 Links
 -----
