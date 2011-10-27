@@ -6,6 +6,7 @@ include $(GOROOT)/src/Make.inc
 TARG=cpio
 GOFILES=\
 	common.go\
+	reader.go\
 	writer.go\
 
 # gb: this is the local install

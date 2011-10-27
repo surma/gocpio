@@ -1,9 +1,9 @@
 package cpio
 
 import (
-    "os"
-    "io"
-    "fmt"
+	"os"
+	"io"
+	"fmt"
 )
 
 // A writer enables sequential writing of cpio archives.
@@ -11,48 +11,54 @@ import (
 // write afterwards appends to that file, writing at most
 // hdr.Size bytes in total.
 type Writer struct {
-    w io.Writer
-    inode int64
-    length int64
-    remaining_bytes int
+	w               io.Writer
+	inode           int64
+	length          int64
+	remaining_bytes int
 }
 
 func NewWriter(w io.Writer) *Writer {
-    return &Writer {
-        w: w,
-        inode: 721,
-    }
+	return &Writer{
+		w:     w,
+		inode: 721,
+	}
 }
 
 func assemble(mode, typev int64) int64 {
-	return mode & 0xFFF | ((typev & 0xF) << 12)
+	return mode&0xFFF | ((typev & 0xF) << 12)
 }
 
 func (w *Writer) WriteHeader(hdr *Header) os.Error {
 	// Bring last file to the defined length
-	w.zeros(int64(w.remaining_bytes))
-	w.pad(4)
+	e := w.zeros(int64(w.remaining_bytes))
+	if e != nil {
+		return e
+	}
+	e = w.pad(4)
+	if e != nil {
+		return e
+	}
 	bname := []byte(hdr.Name)
 	nlinks := 1
 	if hdr.Type == TYPE_DIR {
 		nlinks = 2
 	}
 	shdr := fmt.Sprintf("%s%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x",
-				"070701",
-				w.inode,
-				assemble(hdr.Mode, hdr.Type),
-				hdr.Uid,
-				hdr.Gid,
-				nlinks,
-				hdr.Mtime,
-				hdr.Size,
-				3, // major
-				1, // minor
-				hdr.Devmajor,
-				hdr.Devminor,
-				len(bname)+1, // +1 for terminating zero
-				0) // check
-	_, e := w.countedWrite([]byte(shdr))
+		"070701",
+		w.inode,
+		assemble(hdr.Mode, hdr.Type),
+		hdr.Uid,
+		hdr.Gid,
+		nlinks,
+		hdr.Mtime,
+		hdr.Size,
+		3, // major
+		1, // minor
+		hdr.Devmajor,
+		hdr.Devminor,
+		len(bname)+1, // +1 for terminating zero
+		0)            // check
+	_, e = w.countedWrite([]byte(shdr))
 	if e != nil {
 		return e
 	}
@@ -62,7 +68,7 @@ func (w *Writer) WriteHeader(hdr *Header) os.Error {
 		return e
 	}
 
-	_, e  = w.countedWrite([]byte{0})
+	_, e = w.countedWrite([]byte{0})
 	if e != nil {
 		return e
 	}
@@ -85,18 +91,6 @@ func (w *Writer) zeros(num int64) os.Error {
 func (w *Writer) pad(mod int64) os.Error {
 
 	return w.zeros((mod - (w.length % mod)) % mod)
-}
-
-// Same as pad(), but also pads if the file’s length is
-// already a multiple of mod.
-func (w *Writer) force_pad(mod int64) os.Error {
-	if w.length % mod == 0 {
-		_, e := w.countedWrite([]byte{0})
-		if e != nil {
-			return e
-		}
-	}
-	return w.pad(mod)
 }
 
 func (w *Writer) Write(b []byte) (n int, e os.Error) {
