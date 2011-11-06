@@ -1,7 +1,6 @@
 package cpio
 
 import (
-	"os"
 	"io"
 	"fmt"
 )
@@ -28,7 +27,7 @@ func assemble(mode, typev int64) int64 {
 	return mode&0xFFF | ((typev & 0xF) << 12)
 }
 
-func (w *Writer) WriteHeader(hdr *Header) os.Error {
+func (w *Writer) WriteHeader(hdr *Header) error {
 	// Bring last file to the defined length
 	e := w.zeros(int64(w.remaining_bytes))
 	if e != nil {
@@ -77,7 +76,7 @@ func (w *Writer) WriteHeader(hdr *Header) os.Error {
 	return w.pad(4)
 }
 
-func (w *Writer) zeros(num int64) os.Error {
+func (w *Writer) zeros(num int64) error {
 	for ; num > 0; num-- {
 		_, e := w.countedWrite([]byte{0})
 		if e != nil {
@@ -88,12 +87,12 @@ func (w *Writer) zeros(num int64) os.Error {
 }
 
 // Brings the length of the file to a multiple of mod
-func (w *Writer) pad(mod int64) os.Error {
+func (w *Writer) pad(mod int64) error {
 
 	return w.zeros((mod - (w.length % mod)) % mod)
 }
 
-func (w *Writer) Write(b []byte) (n int, e os.Error) {
+func (w *Writer) Write(b []byte) (n int, e error) {
 	if len(b) > w.remaining_bytes {
 		b = b[0:w.remaining_bytes]
 	}
@@ -102,7 +101,7 @@ func (w *Writer) Write(b []byte) (n int, e os.Error) {
 	return
 }
 
-func (w *Writer) countedWrite(b []byte) (n int, e os.Error) {
+func (w *Writer) countedWrite(b []byte) (n int, e error) {
 	n, e = w.w.Write(b)
 	w.length += int64(n)
 	return n, e
@@ -110,7 +109,7 @@ func (w *Writer) countedWrite(b []byte) (n int, e os.Error) {
 
 // Writes trailer
 // Does not close underlying writer
-func (w *Writer) Close() os.Error {
+func (w *Writer) Close() error {
 	e := w.WriteHeader(&trailer)
 	if e != nil {
 		return e
