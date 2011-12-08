@@ -1,4 +1,4 @@
-gocpio v1.0.1
+gocpio v1.0.2
 =============
 
 A simple library similar to Go’s `tar` or `zip` package for accessing cpio archives.

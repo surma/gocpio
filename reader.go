@@ -1,7 +1,7 @@
 package cpio
 
 import (
-	"os"
+	"errors"
 	"io"
 	"strconv"
 )
@@ -29,16 +29,16 @@ func getPrefix(buf *[]byte, len int) (pre []byte) {
 	return
 }
 
-func Btoi(s string, base int) (int, os.Error) {
-	i, e := strconv.Btoi64(s, base)
+func Btoi(s string, base int) (int, error) {
+	i, e := strconv.ParseInt(s, base, 64)
 	return int(i), e
 }
 
 var (
-	ErrInvalidHeader = os.NewError("Did not find valid magic number")
+	ErrInvalidHeader = errors.New("Did not find valid magic number")
 )
 
-func parseHeader(buf []byte) (*Header, int64, os.Error) {
+func parseHeader(buf []byte) (*Header, int64, error) {
 	magic := string(getPrefix(&buf, 6))
 	raw_inode := getPrefix(&buf, 8)
 	raw_mode := getPrefix(&buf, 8)
@@ -62,7 +62,7 @@ func parseHeader(buf []byte) (*Header, int64, os.Error) {
 
 	hdr := &Header{}
 
-	mode, e := strconv.Btoi64(string(raw_mode), 16)
+	mode, e := strconv.ParseInt(string(raw_mode), 16, 64)
 	if e != nil {
 		return nil, 0, e
 	}
@@ -79,27 +79,27 @@ func parseHeader(buf []byte) (*Header, int64, os.Error) {
 		return nil, 0, e
 	}
 
-	hdr.Mtime, e = strconv.Btoi64(string(raw_mtime), 16)
+	hdr.Mtime, e = strconv.ParseInt(string(raw_mtime), 16, 64)
 	if e != nil {
 		return nil, 0, e
 	}
 
-	hdr.Size, e = strconv.Btoi64(string(raw_size), 16)
+	hdr.Size, e = strconv.ParseInt(string(raw_size), 16, 64)
 	if e != nil {
 		return nil, 0, e
 	}
 
-	hdr.Devmajor, e = strconv.Btoi64(string(raw_devmajor), 16)
+	hdr.Devmajor, e = strconv.ParseInt(string(raw_devmajor), 16, 64)
 	if e != nil {
 		return nil, 0, e
 	}
 
-	hdr.Devminor, e = strconv.Btoi64(string(raw_devminor), 16)
+	hdr.Devminor, e = strconv.ParseInt(string(raw_devminor), 16, 64)
 	if e != nil {
 		return nil, 0, e
 	}
 
-	namelen, e := strconv.Btoi64(string(raw_namelen), 16)
+	namelen, e := strconv.ParseInt(string(raw_namelen), 16, 64)
 	if e != nil {
 		return nil, 0, e
 	}
@@ -107,7 +107,7 @@ func parseHeader(buf []byte) (*Header, int64, os.Error) {
 	return hdr, namelen, nil
 }
 
-func (r *Reader) Next() (*Header, os.Error) {
+func (r *Reader) Next() (*Header, error) {
 	e := r.skipRest()
 	if e != nil {
 		return nil, e
@@ -139,7 +139,7 @@ func (r *Reader) Next() (*Header, os.Error) {
 	return hdr, r.skipPadding(4)
 }
 
-func (r *Reader) skipRest() os.Error {
+func (r *Reader) skipRest() error {
 	buf := make([]byte, 1)
 	for ; r.remaining_bytes > 0; r.remaining_bytes-- {
 		_, e := r.countedRead(buf)
@@ -151,14 +151,14 @@ func (r *Reader) skipRest() os.Error {
 }
 
 // Skips to the next position which is a multiple of mod.
-func (r *Reader) skipPadding(mod int64) os.Error {
+func (r *Reader) skipPadding(mod int64) error {
 	numBytesToRead := ((mod - (r.pos % mod)) % mod)
 	buf := make([]byte, numBytesToRead)
 	_, e := r.countedRead(buf)
 	return e
 }
 
-func (r *Reader) Read(b []byte) (n int, e os.Error) {
+func (r *Reader) Read(b []byte) (n int, e error) {
 	if len(b) > r.remaining_bytes {
 		b = b[0:r.remaining_bytes]
 	}
@@ -167,7 +167,7 @@ func (r *Reader) Read(b []byte) (n int, e os.Error) {
 	return
 }
 
-func (r *Reader) countedRead(b []byte) (n int, e os.Error) {
+func (r *Reader) countedRead(b []byte) (n int, e error) {
 	if len(b) == 0 {
 		return
 	}
