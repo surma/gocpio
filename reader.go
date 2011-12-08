@@ -30,7 +30,7 @@ func getPrefix(buf *[]byte, len int) (pre []byte) {
 }
 
 func Btoi(s string, base int) (int, error) {
-	i, e := strconv.Btoi64(s, base)
+	i, e := strconv.ParseInt(s, base, 64)
 	return int(i), e
 }
 
@@ -62,7 +62,7 @@ func parseHeader(buf []byte) (*Header, int64, error) {
 
 	hdr := &Header{}
 
-	mode, e := strconv.Btoi64(string(raw_mode), 16)
+	mode, e := strconv.ParseInt(string(raw_mode), 16, 64)
 	if e != nil {
 		return nil, 0, e
 	}
@@ -79,27 +79,27 @@ func parseHeader(buf []byte) (*Header, int64, error) {
 		return nil, 0, e
 	}
 
-	hdr.Mtime, e = strconv.Btoi64(string(raw_mtime), 16)
+	hdr.Mtime, e = strconv.ParseInt(string(raw_mtime), 16, 64)
 	if e != nil {
 		return nil, 0, e
 	}
 
-	hdr.Size, e = strconv.Btoi64(string(raw_size), 16)
+	hdr.Size, e = strconv.ParseInt(string(raw_size), 16, 64)
 	if e != nil {
 		return nil, 0, e
 	}
 
-	hdr.Devmajor, e = strconv.Btoi64(string(raw_devmajor), 16)
+	hdr.Devmajor, e = strconv.ParseInt(string(raw_devmajor), 16, 64)
 	if e != nil {
 		return nil, 0, e
 	}
 
-	hdr.Devminor, e = strconv.Btoi64(string(raw_devminor), 16)
+	hdr.Devminor, e = strconv.ParseInt(string(raw_devminor), 16, 64)
 	if e != nil {
 		return nil, 0, e
 	}
 
-	namelen, e := strconv.Btoi64(string(raw_namelen), 16)
+	namelen, e := strconv.ParseInt(string(raw_namelen), 16, 64)
 	if e != nil {
 		return nil, 0, e
 	}
