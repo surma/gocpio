@@ -3,6 +3,10 @@
 // http://people.freebsd.org/~kientzle/libarchive/man/cpio.5.txt
 package cpio
 
+const (
+	VERSION = "1.1.0"
+)
+
 // Header represents file meta data in an archive.
 // Some fields may not be populated.
 type Header struct {
