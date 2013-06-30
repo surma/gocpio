@@ -159,6 +159,10 @@ func (r *Reader) skipPadding(mod int64) error {
 }
 
 func (r *Reader) Read(b []byte) (n int, e error) {
+	if r.remaining_bytes == 0 {
+		return 0, io.EOF
+	}
+
 	if len(b) > r.remaining_bytes {
 		b = b[0:r.remaining_bytes]
 	}
