@@ -1,181 +1,171 @@
 package cpio
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"strconv"
 )
 
 type Reader struct {
-	r               io.Reader
-	pos             int64
-	remaining_bytes int
+	rd          io.Reader
+	unalignment int
+	remaining   int
 }
 
 func NewReader(r io.Reader) *Reader {
 	return &Reader{
-		r: r,
+		rd: r,
 	}
-}
-
-func disassemble(mode int64) (fmode int64, ftype int64) {
-	fmode = mode & 0xFFF
-	ftype = (mode >> 12) & 0xF
-	return
-}
-
-func getPrefix(buf *[]byte, len int) (pre []byte) {
-	pre, *buf = (*buf)[0:len], (*buf)[len:]
-	return
-}
-
-func Btoi(s string, base int) (int, error) {
-	i, e := strconv.ParseInt(s, base, 64)
-	return int(i), e
 }
 
 var (
 	ErrInvalidHeader = errors.New("Did not find valid magic number")
 )
 
-func parseHeader(buf []byte) (*Header, int64, error) {
-	magic := string(getPrefix(&buf, 6))
-	raw_inode := getPrefix(&buf, 8)
-	raw_mode := getPrefix(&buf, 8)
-	raw_uid := getPrefix(&buf, 8)
-	raw_gid := getPrefix(&buf, 8)
-	raw_nlinks := getPrefix(&buf, 8)
-	raw_mtime := getPrefix(&buf, 8)
-	raw_size := getPrefix(&buf, 8)
-	raw_major := getPrefix(&buf, 8)
-	raw_minor := getPrefix(&buf, 8)
-	raw_devmajor := getPrefix(&buf, 8)
-	raw_devminor := getPrefix(&buf, 8)
-	raw_namelen := getPrefix(&buf, 8)
-	raw_check := getPrefix(&buf, 8)
-
-	_, _, _, _, _ = raw_inode, raw_nlinks, raw_major, raw_minor, raw_check
-
-	if magic != "070701" {
-		return nil, 0, ErrInvalidHeader
-	}
-
-	hdr := &Header{}
-
-	mode, e := strconv.ParseInt(string(raw_mode), 16, 64)
-	if e != nil {
-		return nil, 0, e
-	}
-
-	hdr.Mode, hdr.Type = disassemble(mode)
-
-	hdr.Uid, e = Btoi(string(raw_uid), 16)
-	if e != nil {
-		return nil, 0, e
-	}
-
-	hdr.Gid, e = Btoi(string(raw_gid), 16)
-	if e != nil {
-		return nil, 0, e
-	}
-
-	hdr.Mtime, e = strconv.ParseInt(string(raw_mtime), 16, 64)
-	if e != nil {
-		return nil, 0, e
-	}
-
-	hdr.Size, e = strconv.ParseInt(string(raw_size), 16, 64)
-	if e != nil {
-		return nil, 0, e
-	}
-
-	hdr.Devmajor, e = strconv.ParseInt(string(raw_devmajor), 16, 64)
-	if e != nil {
-		return nil, 0, e
-	}
-
-	hdr.Devminor, e = strconv.ParseInt(string(raw_devminor), 16, 64)
-	if e != nil {
-		return nil, 0, e
-	}
-
-	namelen, e := strconv.ParseInt(string(raw_namelen), 16, 64)
-	if e != nil {
-		return nil, 0, e
-	}
-
-	return hdr, namelen, nil
-}
+const (
+	alignTo = 4
+)
 
 func (r *Reader) Next() (*Header, error) {
-	e := r.skipRest()
-	if e != nil {
-		return nil, e
-	}
-	e = r.skipPadding(4)
-	if e != nil {
-		return nil, e
-	}
-
-	raw_hdr := make([]byte, 110)
-	_, e = r.countedRead(raw_hdr)
-	if e != nil {
-		return nil, e
-	}
-
-	hdr, namelen, e := parseHeader(raw_hdr)
-	if e != nil {
-		return nil, e
-	}
-
-	bname := make([]byte, namelen)
-	_, e = r.countedRead(bname)
-	if e != nil {
-		return nil, e
-	}
-
-	hdr.Name = string(bname[0 : namelen-1]) //Exclude terminating zero
-	r.remaining_bytes = int(hdr.Size)
-	return hdr, r.skipPadding(4)
-}
-
-func (r *Reader) skipRest() error {
-	buf := make([]byte, 1)
-	for ; r.remaining_bytes > 0; r.remaining_bytes-- {
-		_, e := r.countedRead(buf)
-		if e != nil {
-			return e
+	if r.remaining > 0 {
+		if err := r.skip(r.remaining); err != nil {
+			return nil, err
 		}
 	}
-	return nil
+
+	if r.unalignment != 0 {
+		if err := r.skip(alignTo - r.unalignment); err != nil {
+			return nil, err
+		}
+	}
+
+	h, err := readHeader(r.rd)
+	if err != nil {
+		return nil, err
+	}
+
+	r.remaining = int(h.Size)
+
+	r.consumed(110 + len(h.Name) + 1)
+
+	if r.unalignment != 0 {
+		if err := r.skip(alignTo - r.unalignment); err != nil {
+			return nil, err
+		}
+	}
+
+	return h, nil
 }
 
-// Skips to the next position which is a multiple of mod.
-func (r *Reader) skipPadding(mod int64) error {
-	numBytesToRead := ((mod - (r.pos % mod)) % mod)
-	buf := make([]byte, numBytesToRead)
-	_, e := r.countedRead(buf)
-	return e
-}
-
-func (r *Reader) Read(b []byte) (n int, e error) {
-	if r.remaining_bytes == 0 {
+func (r *Reader) Read(b []byte) (int, error) {
+	if r.remaining == 0 {
 		return 0, io.EOF
 	}
 
-	if len(b) > r.remaining_bytes {
-		b = b[0:r.remaining_bytes]
+	if len(b) > r.remaining {
+		b = b[:r.remaining]
 	}
-	n, e = r.countedRead(b)
-	r.remaining_bytes -= n
-	return
+
+	n, err := r.rd.Read(b)
+
+	if n > 0 {
+		r.remaining -= n
+		r.consumed(n)
+	}
+
+	return n, err
 }
 
-func (r *Reader) countedRead(b []byte) (n int, e error) {
-	if len(b) == 0 {
-		return
+func readHeader(rd io.Reader) (*Header, error) {
+	b := make([]byte, 110)
+	if _, err := io.ReadFull(rd, b); err != nil {
+		return nil, err
 	}
-	n, e = r.r.Read(b)
-	r.pos += int64(n)
-	return
+
+	if !bytes.HasPrefix(b, []byte("070701")) {
+		return nil, ErrInvalidHeader
+	}
+
+	h := Header{}
+
+	mode, err := strconv.ParseInt(string(b[14:22]), 16, 64)
+	if err != nil {
+		return nil, err
+	}
+
+	h.Mode = mode & 0xfff
+	h.Type = (mode >> 12) & 0xf
+
+	uid, err := strconv.ParseInt(string(b[22:30]), 16, 64)
+	if err != nil {
+		return nil, err
+	}
+	h.Uid = int(uid)
+
+	gid, err := strconv.ParseInt(string(b[30:38]), 16, 64)
+	if err != nil {
+		return nil, err
+	}
+	h.Gid = int(gid)
+
+	mtime, err := strconv.ParseInt(string(b[46:54]), 16, 64)
+	if err != nil {
+		return nil, err
+	}
+	h.Mtime = mtime
+
+	size, err := strconv.ParseInt(string(b[54:62]), 16, 64)
+	if err != nil {
+		return nil, err
+	}
+	h.Size = size
+
+	devMajor, err := strconv.ParseInt(string(b[78:86]), 16, 64)
+	if err != nil {
+		return nil, err
+	}
+	h.Devmajor = devMajor
+
+	devMinor, err := strconv.ParseInt(string(b[86:94]), 16, 64)
+	if err != nil {
+		return nil, err
+	}
+	h.Devminor = devMinor
+
+	l, err := strconv.ParseInt(string(b[94:102]), 16, 64)
+	if err != nil {
+		return nil, err
+	}
+
+	name := make([]byte, l)
+	if _, err := io.ReadFull(rd, name); err != nil {
+		return nil, err
+	}
+	// skip the trailing "0" (?)
+	h.Name = string(name[:len(name)-1])
+
+	return &h, nil
+}
+
+func (r *Reader) skip(n int) error {
+	c := 0
+	for c < n {
+		buf := make([]byte, n-c)
+
+		nr, err := r.rd.Read(buf)
+		if err != nil {
+			return err
+		}
+
+		c += nr
+	}
+
+	r.consumed(n)
+
+	return nil
+}
+
+func (r *Reader) consumed(n int) {
+	r.unalignment = (r.unalignment + n) % alignTo
 }
